@@ -103,7 +103,12 @@ app.get(
   passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
     const token = jwt.sign(
-      { id: req.user.id, email: req.user.email, role: req.user.role },
+      {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role,
+        is_verified: true,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
