@@ -1,0 +1,17 @@
+name: Deploy to production_dramaku
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Trigger Vercel production_dramaku
+        run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_3jGvnaxt3fZQVxamT2tUr6m0IOpD/GxKGUiJXpA
