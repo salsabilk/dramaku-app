@@ -21,13 +21,18 @@ app.use(
     secret: JWT_SECRET, // Gunakan JWT_SECRET untuk session secret
     resave: false,
     saveUninitialized: true,
+    cookie: {
+      secure: true, // Pastikan secure true jika menggunakan HTTPS
+      httpOnly: true,
+      sameSite: "None", // Mencegah serangan CSRF
+    },
   })
 );
 
 // Middleware express
 app.use(
   cors({
-    origin: ['http://localhost:3000', process.env.CLIENT_URL],
+    origin: ["http://localhost:3000", process.env.CLIENT_URL],
     credentials: true,
   })
 );
@@ -48,7 +53,9 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
         // Cek apakah pengguna sudah ada berdasarkan googleId atau email
-        const existingUser = await User.findOne({ where: { googleId: profile.id } });
+        const existingUser = await User.findOne({
+          where: { googleId: profile.id },
+        });
 
         if (existingUser) {
           // Jika sudah ada, login user
@@ -122,14 +129,14 @@ app.get("/session", (req, res) => {
     const token = req.session.token; // Ambil token dari session
     res.json({ token }); // Kirim token ke client
   } else {
-    res.status(401).json({ message: "Unauthorized" , token: req.session.token});
+    res.status(401).json({ message: "Unauthorized", token: req.session.token });
   }
 });
 
 app.get("/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) {
-      return res.status(500).json({ message: 'Could not log out' });
+      return res.status(500).json({ message: "Could not log out" });
     }
     req.logout(); // Jika menggunakan passport.js
     res.redirect("/"); // Redirect ke halaman utama setelah logout
