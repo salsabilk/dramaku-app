@@ -66,8 +66,11 @@ passport.use(
         const newUser = await User.create({
           googleId: profile.id,
           username: profile.displayName,
-          email: profile.emails[0].value, // Ambil email pengguna dari Google
-          photo: profile.photos[0].value, // Simpan foto profil jika diperlukan
+          email: profile.emails[0].value,
+          photo: profile.photos[0].value,
+          role: "USER", // Tambahkan jika perlu
+          is_suspended: false, // Tambahkan jika perlu
+          is_verified: true, // Tambahkan jika perlu
         });
 
         return done(null, newUser);
