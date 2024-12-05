@@ -21,17 +21,21 @@ app.use(
     secret: JWT_SECRET, // Gunakan JWT_SECRET untuk session secret
     resave: false,
     saveUninitialized: true,
+    cookie: {
+      secure: true, // Pastikan secure true jika menggunakan HTTPS
+      httpOnly: true,
+      sameSite: "None", // Mencegah serangan CSRF
+    },
   })
 );
 
 // Middleware express
 app.use(
   cors({
-    origin: process.env.CLIENT_URL,
+    origin: ["http://localhost:3000", process.env.CLIENT_URL],
     credentials: true,
   })
 );
-
 app.use(express.json());
 
 // Inisialisasi Passport dan sesi
@@ -103,17 +107,16 @@ app.get(
         id: req.user.id,
         email: req.user.email,
         role: req.user.role,
-        username: req.user.username,
+        is_verified: true,
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    // Simpan token ke session
     req.session.token = token;
+    // console.log(req.session);
 
-    // Redirect ke client dengan menyertakan token
-    res.redirect(`${process.env.CLIENT_URL}?auth=success`);
+    res.redirect(process.env.CLIENT_URL);
   }
 );
 
@@ -152,7 +155,7 @@ app.use("/auth", require("./routes/auth"));
 const PORT = process.env.NODE_ENV === "test" ? 0 : 3001;
 
 app.listen(PORT, () => {
-  // console.log(Server running on port ${PORT});
+  // console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app;
