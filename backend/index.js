@@ -21,11 +21,6 @@ app.use(
     secret: JWT_SECRET, // Gunakan JWT_SECRET untuk session secret
     resave: false,
     saveUninitialized: true,
-    cookie: {
-      secure: true, // Pastikan secure true jika menggunakan HTTPS
-      httpOnly: true,
-      sameSite: "None", // Mencegah serangan CSRF
-    },
   })
 );
 
@@ -103,12 +98,7 @@ app.get(
   passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
     const token = jwt.sign(
-      {
-        id: req.user.id,
-        email: req.user.email,
-        role: req.user.role,
-        is_verified: true,
-      },
+      { id: req.user.id, email: req.user.email, role: req.user.role },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
@@ -155,7 +145,7 @@ app.use("/auth", require("./routes/auth"));
 const PORT = process.env.NODE_ENV === "test" ? 0 : 3001;
 
 app.listen(PORT, () => {
-  // console.log(`Server running on port ${PORT}`);
+  // console.log(Server running on port ${PORT});
 });
 
 module.exports = app;
