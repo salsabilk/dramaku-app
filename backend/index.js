@@ -15,29 +15,27 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET; // JWT_SECRET untuk session
 
-// Konfigurasi session
+// Konfigurasi express-session untuk mengelola sesi
 app.use(
   session({
-    secret: process.env.JWT_SECRET,
+    secret: JWT_SECRET, // Gunakan JWT_SECRET untuk session secret
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: process.env.NODE_ENV === "production", // gunakan secure di production
-      maxAge: 1000 * 60 * 60 * 24, // 24 jam
+      secure: true, // Pastikan secure true jika menggunakan HTTPS
+      httpOnly: true,
+      sameSite: "None", // Mencegah serangan CSRF
     },
   })
 );
 
-// Konfigurasi CORS yang lebih spesifik
+// Middleware express
 app.use(
   cors({
     origin: ["http://localhost:3000", process.env.CLIENT_URL],
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
-
 app.use(express.json());
 
 // Inisialisasi Passport dan sesi
@@ -45,8 +43,6 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Konfigurasi Google Strategy
-const { Op } = require("sequelize"); // Tambahkan impor Op
-
 passport.use(
   new GoogleStrategy(
     {
@@ -56,46 +52,31 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        console.log("Google Profile:", profile); // Tambahkan logging
-
-        // Cari user berdasarkan googleId atau email
+        // Cek apakah pengguna sudah ada berdasarkan googleId atau email
         const existingUser = await User.findOne({
-          where: {
-            [Op.or]: [
-              { googleId: profile.id },
-              { email: profile.emails[0].value },
-            ],
-          },
+          where: { googleId: profile.id },
         });
 
         if (existingUser) {
-          // Update googleId jika belum ada
-          if (!existingUser.googleId) {
-            existingUser.googleId = profile.id;
-            await existingUser.save();
-          }
+          // Jika sudah ada, login user
           return done(null, existingUser);
         }
 
-        // Buat user baru jika tidak ditemukan
+        // Jika belum ada, buat user baru di database
         const newUser = await User.create({
           googleId: profile.id,
-          username: profile.displayName.replace(/\s+/g, "_").toLowerCase(), // Buat username unik
-          email: profile.emails[0].value,
-          photo: profile.photos[0]?.value || null,
-          is_verified: true, // Langsung verifikasi user Google
-          password: null, // Tidak memerlukan password untuk login Google
+          username: profile.displayName,
+          email: profile.emails[0].value, // Ambil email pengguna dari Google
+          photo: profile.photos[0].value, // Simpan foto profil jika diperlukan
         });
 
         return done(null, newUser);
       } catch (error) {
-        console.error("Google Authentication Error:", error);
         return done(error, false);
       }
     }
   )
 );
-
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
@@ -119,41 +100,23 @@ app.get(
 // Callback setelah login sukses dari Google
 app.get(
   "/auth/google/callback",
-  passport.authenticate("google", {
-    failureRedirect: process.env.CLIENT_URL + "/login",
-    session: true, // Pastikan session diaktifkan
-  }),
+  passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
-    try {
-      // Pastikan req.user ada
-      if (!req.user) {
-        return res.redirect(
-          process.env.CLIENT_URL + "/login?error=authentication_failed"
-        );
-      }
+    const token = jwt.sign(
+      {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role,
+        is_verified: true,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
 
-      // Generate token dengan informasi user
-      const token = jwt.sign(
-        {
-          id: req.user.id,
-          username: req.user.username,
-          email: req.user.email,
-          role: req.user.role,
-          is_suspended: req.user.is_suspended,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "1h" }
-      );
+    req.session.token = token;
+    // console.log(req.session);
 
-      // Simpan token di session
-      req.session.token = token;
-
-      // Redirect ke halaman utama dengan token
-      res.redirect(`${process.env.CLIENT_URL}?token=${token}`);
-    } catch (error) {
-      console.error("Callback Error:", error);
-      res.redirect(process.env.CLIENT_URL + "/login?error=server_error");
-    }
+    res.redirect(process.env.CLIENT_URL);
   }
 );
 
@@ -166,18 +129,12 @@ app.get("/logout", (req, res) => {
 });
 
 app.get("/session", (req, res) => {
+  // console.log(req.session);
   if (req.session.token) {
-    try {
-      // Verifikasi token
-      const decoded = jwt.verify(req.session.token, process.env.JWT_SECRET);
-      res.json({ token: req.session.token, user: decoded });
-    } catch (error) {
-      // Token invalid
-      req.session.destroy(); // Hapus session
-      res.status(401).json({ message: "Invalid or expired token" });
-    }
+    const token = req.session.token; // Ambil token dari session
+    res.json({ token }); // Kirim token ke client
   } else {
-    res.status(401).json({ message: "No active session" });
+    res.status(401).json({ message: "Unauthorized", token: req.session.token });
   }
 });
 
