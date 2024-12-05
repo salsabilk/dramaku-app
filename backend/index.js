@@ -27,10 +27,11 @@ app.use(
 // Middleware express
 app.use(
   cors({
-    origin: ["http://localhost:3000", process.env.CLIENT_URL],
+    origin: process.env.CLIENT_URL,
     credentials: true,
   })
 );
+
 app.use(express.json());
 
 // Inisialisasi Passport dan sesi
@@ -98,15 +99,21 @@ app.get(
   passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
     const token = jwt.sign(
-      { id: req.user.id, email: req.user.email, role: req.user.role },
+      {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role,
+        username: req.user.username,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
+    // Simpan token ke session
     req.session.token = token;
-    // console.log(req.session);
 
-    res.redirect(process.env.CLIENT_URL);
+    // Redirect ke client dengan menyertakan token
+    res.redirect(`${process.env.CLIENT_URL}?auth=success`);
   }
 );
 
