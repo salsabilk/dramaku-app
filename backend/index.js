@@ -6,41 +6,39 @@ const session = require("express-session");
 const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const { sequelize, User } = require("./models");
-const GoogleStrategy = require("passport-google-oauth20").Strategy;
-const cookieParser = require('cookie-parser');
+const GoogleStrategy = require("passport-google-oauth20").Strategy; // Tambah paket Google OAuth 2.0
 
 dotenv.config();
 
-// Variabel konfigurasi
+// Gunakan variabel dari .env
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET; // JWT_SECRET untuk session
 
-// Middleware dasar
-app.use(cookieParser());
-app.use(express.json());
-app.use(cors({
-  origin: process.env.CLIENT_URL,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-}));
-
-// Konfigurasi session (PENTING: setelah CORS)
+// Konfigurasi express-session untuk mengelola sesi
 app.use(
   session({
     secret: JWT_SECRET,
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: true,
-      httpOnly: true,
-      sameSite: "None",
-      maxAge: 1000 * 60 * 60, // 1 jam
+      secure: false, // Aktifkan cookie aman di production
+      httpOnly: true, // Cegah akses JavaScript ke cookie
     },
   })
 );
 
-// Inisialisasi Passport (PENTING: setelah session)
+// Middleware express
+app.use(express.json());
+
+app.use(
+  cors({
+    origin: ["http://localhost:3000", process.env.CLIENT_URL],
+    credentials: true,
+  })
+);
+
+// Inisialisasi Passport dan sesi
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -54,23 +52,30 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        // Cari atau buat user
+        console.log("Google profile:", profile);
+
+        // Cek user yang ada
         let user = await User.findOne({
           where: { googleId: profile.id },
         });
 
-        if (!user) {
-          user = await User.create({
-            googleId: profile.id,
-            username: profile.displayName,
-            email: profile.emails[0].value,
-            photo: profile.photos[0].value,
-            role: "User",
-            is_verified: true,
-            is_suspended: false,
-          });
+        if (user) {
+          console.log("Existing user found:", user.id);
+          return done(null, user);
         }
 
+        // Buat user baru
+        user = await User.create({
+          googleId: profile.id,
+          username: profile.displayName,
+          email: profile.emails[0].value,
+          photo: profile.photos[0].value,
+          role: "User",
+          is_verified: true, // User Google otomatis terverifikasi
+          is_suspended: false,
+        });
+
+        console.log("New user created:", user.id);
         return done(null, user);
       } catch (error) {
         console.error("Google strategy error:", error);
@@ -80,135 +85,111 @@ passport.use(
   )
 );
 
-// Serialisasi user
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
 
 passport.deserializeUser((id, done) => {
   User.findByPk(id)
-    .then((user) => done(null, user))
-    .catch((error) => done(error, null));
+    .then((user) => {
+      done(null, user);
+    })
+    .catch((error) => {
+      done(error, null);
+    });
 });
 
-// Rute autentikasi Google
+// Route autentikasi Google
 app.get(
   "/auth/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
-// Callback autentikasi Google
+// Callback setelah login sukses dari Google
 app.get(
   "/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
     try {
-      console.log('Google auth callback - User:', req.user);
-      
       const token = jwt.sign(
         {
           id: req.user.id,
           email: req.user.email,
-          role: req.user.role || 'User',
-          username: req.user.username
+          role: req.user.role || "User", // Pastikan role selalu ada
+          username: req.user.username,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "24h" }
+        { expiresIn: "1h" }
       );
 
-      // Simpan token ke cookie
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60 * 1000 // 24 jam
+      // Simpan token ke session
+      req.session.token = token;
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+        }
+        console.log("Session saved successfully:", req.session);
+        res.redirect(process.env.CLIENT_URL);
       });
-
-      console.log('Token set in cookie');
-      res.redirect(process.env.CLIENT_URL);
     } catch (error) {
-      console.error('Token generation error:', error);
-      res.redirect('/auth/error');
+      console.error("Token generation error:", error);
+      res.redirect("/auth/error");
     }
   }
 );
 
-// // Rute ambil session
-// app.get("/session", (req, res) => {
-//   if (req.session && req.session.token) {
-//     res.json({
-//       success: true,
-//       token: req.session.token,
-//     });
-//   } else {
-//     res.status(401).json({
-//       success: false,
-//       message: "Tidak ada token sesi",
-//     });
-//   }
-// });
+// Route logout
+app.get("/logout", (req, res) => {
+  req.logout((err) => {
+    if (err) return next(err);
+    res.redirect("/");
+  });
+});
 
-app.get("/auth/check", (req, res) => {
+app.get("/session", (req, res) => {
   try {
-    const token = req.cookies.token;
-    console.log('Checking auth - Token exists:', !!token);
+    console.log("Session request received");
+    console.log("Session data:", req.session);
 
-    if (!token) {
-      return res.status(401).json({ 
-        authenticated: false,
-        message: "No token found" 
+    if (req.session && req.session.token) {
+      res.json({
+        success: true,
+        token: req.session.token,
+      });
+    } else {
+      console.log("No token in session");
+      res.status(401).json({
+        success: false,
+        message: "No session token found",
       });
     }
-
-    // Verifikasi token
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-      if (err) {
-        console.error('Token verification failed:', err);
-        return res.status(401).json({ 
-          authenticated: false,
-          message: "Invalid token" 
-        });
-      }
-
-      console.log('Token verified - User:', decoded);
-      res.json({ 
-        authenticated: true,
-        user: decoded 
-      });
-    });
   } catch (error) {
-    console.error('Auth check error:', error);
-    res.status(500).json({ 
-      authenticated: false,
-      message: "Server error" 
+    console.error("Session endpoint error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
     });
   }
 });
 
-// Rute logout
-app.get("/logout", (req, res, next) => {
-  req.logout((err) => {
-    if (err) return next(err);
-
-    req.session.destroy((destroyErr) => {
-      if (destroyErr) {
-        return res.status(500).json({ message: "Gagal logout" });
-      }
-      res.redirect("/");
-    });
+app.get("/logout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ message: "Could not log out" });
+    }
+    req.logout(); // Jika menggunakan passport.js
+    res.redirect("/"); // Redirect ke halaman utama setelah logout
   });
 });
 
-// Tambahkan rute lain
 app.use("/api", require("./routes/drama"));
 app.use("/auth", require("./routes/auth"));
 
-// Konfigurasi port
+// const PORT = 3000;
 const PORT = process.env.NODE_ENV === "test" ? 0 : 3001;
 
-// Jalankan server
 app.listen(PORT, () => {
-  console.log(`Server berjalan di port ${PORT}`);
+  // console.log(Server running on port ${PORT});
 });
 
 module.exports = app;
