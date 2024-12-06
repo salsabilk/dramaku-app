@@ -5,45 +5,41 @@ const Auth = ({ children }) => {
   const [hasAccess, setHasAccess] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const getProtectedData = async () => {
-    const token = sessionStorage.getItem("token");
-    if (!token) {
-      setHasAccess(false);
-      setIsLoading(false);
-      return;
-    }
+  const checkAuth = async () => {
     try {
+      console.log("Checking authentication...");
+
       const response = await fetch(
-        process.env.REACT_APP_BASE_API_URL + "/auth/protected",
+        `${process.env.REACT_APP_BASE_API_URL}/auth/check`,
         {
           method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include", // Penting untuk mengirim cookies
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
+      console.log("Auth check response status:", response.status);
+      const data = await response.json();
+      console.log("Auth check response:", data);
 
-        if (data.access) {
-          setHasAccess(true);
-        } else {
-          setHasAccess(false);
-        }
+      if (data.authenticated) {
+        setHasAccess(true);
+        // Simpan informasi user jika diperlukan
+        localStorage.setItem("user", JSON.stringify(data.user));
       } else {
-        // console.log("Failed to fetch protected data");
         setHasAccess(false);
+        localStorage.removeItem("user");
       }
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Auth check error:", error);
       setHasAccess(false);
+      localStorage.removeItem("user");
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
-    getProtectedData();
+    checkAuth();
   }, []);
 
   if (isLoading) {

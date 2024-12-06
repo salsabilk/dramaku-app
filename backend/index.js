@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const { sequelize, User } = require("./models");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
+const cookieParser = require('cookie-parser');
 
 dotenv.config();
 
@@ -16,17 +17,13 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middleware dasar
+app.use(cookieParser());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Konfigurasi CORS (PENTING: letakkan sebelum session)
-app.use(
-  cors({
-    origin: ["http://localhost:3000", process.env.CLIENT_URL],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  })
-);
+app.use(cors({
+  origin: process.env.CLIENT_URL,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 
 // Konfigurasi session (PENTING: setelah CORS)
 app.use(
@@ -37,7 +34,7 @@ app.use(
     cookie: {
       secure: true,
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "None",
       maxAge: 1000 * 60 * 60, // 1 jam
     },
   })
@@ -106,49 +103,84 @@ app.get(
   passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
     try {
-      // Generate token
+      console.log('Google auth callback - User:', req.user);
+      
       const token = jwt.sign(
         {
           id: req.user.id,
           email: req.user.email,
-          role: req.user.role || "User",
-          username: req.user.username,
+          role: req.user.role || 'User',
+          username: req.user.username
         },
         process.env.JWT_SECRET,
-        { expiresIn: "1h" }
+        { expiresIn: "24h" }
       );
 
-      // Simpan token ke session
-      req.session.token = token;
-
-      // Pastikan session tersimpan
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
-          return res.status(500).send("Session save error");
-        }
-
-        // Redirect ke halaman utama
-        res.redirect(process.env.CLIENT_URL);
+      // Simpan token ke cookie
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000 // 24 jam
       });
+
+      console.log('Token set in cookie');
+      res.redirect(process.env.CLIENT_URL);
     } catch (error) {
-      console.error("Token generation error:", error);
-      res.redirect("/auth/error");
+      console.error('Token generation error:', error);
+      res.redirect('/auth/error');
     }
   }
 );
 
-// Rute ambil session
-app.get("/session", (req, res) => {
-  if (req.session && req.session.token) {
-    res.json({
-      success: true,
-      token: req.session.token,
+// // Rute ambil session
+// app.get("/session", (req, res) => {
+//   if (req.session && req.session.token) {
+//     res.json({
+//       success: true,
+//       token: req.session.token,
+//     });
+//   } else {
+//     res.status(401).json({
+//       success: false,
+//       message: "Tidak ada token sesi",
+//     });
+//   }
+// });
+
+app.get("/auth/check", (req, res) => {
+  try {
+    const token = req.cookies.token;
+    console.log('Checking auth - Token exists:', !!token);
+
+    if (!token) {
+      return res.status(401).json({ 
+        authenticated: false,
+        message: "No token found" 
+      });
+    }
+
+    // Verifikasi token
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        console.error('Token verification failed:', err);
+        return res.status(401).json({ 
+          authenticated: false,
+          message: "Invalid token" 
+        });
+      }
+
+      console.log('Token verified - User:', decoded);
+      res.json({ 
+        authenticated: true,
+        user: decoded 
+      });
     });
-  } else {
-    res.status(401).json({
-      success: false,
-      message: "Tidak ada token sesi",
+  } catch (error) {
+    console.error('Auth check error:', error);
+    res.status(500).json({ 
+      authenticated: false,
+      message: "Server error" 
     });
   }
 });
