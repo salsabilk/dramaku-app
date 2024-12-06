@@ -207,7 +207,6 @@ Seed database
 docker exec review-film-backend-1 npx sequelize-cli db:seed:all
 ```
 
-
 ## Akses Website
 
 Buka browser dan akses frontend di: `http://localhost:3000`.
@@ -216,10 +215,20 @@ Backend API berjalan di: `http://localhost:3001`.
 
 ## Live Demo
 
-Live demo bisa diakses pada link berikut: `https://bit.ly/3BaetFb`.
+Live demo bisa diakses pada link berikut: `https://dramaku-web.vercel.app/`.
 
-### Akun Login
+### Test Account Login
 
+#### Admin Account
+
+```
 Username: admin
-
 Password: 12345678
+```
+
+#### User Account
+
+```
+Username: sabil
+Password: 12345678
+```
