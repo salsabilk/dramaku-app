@@ -112,15 +112,25 @@ app.get(
   (req, res) => {
     try {
       const token = jwt.sign(
-        { id: req.user.id, email: req.user.email, role: req.user.role },
+        {
+          id: req.user.id,
+          email: req.user.email,
+          role: req.user.role || "User", // Pastikan role selalu ada
+          username: req.user.username,
+        },
         process.env.JWT_SECRET,
         { expiresIn: "1h" }
       );
 
+      // Simpan token ke session
       req.session.token = token;
-      console.log("auth session:", req.session);
-
-      res.redirect(process.env.CLIENT_URL);
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+        }
+        console.log("Session saved successfully:", req.session);
+        res.redirect(process.env.CLIENT_URL);
+      });
     } catch (error) {
       console.error("Token generation error:", error);
       res.redirect("/auth/error");
