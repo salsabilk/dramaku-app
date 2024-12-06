@@ -22,7 +22,7 @@ app.use(
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: false, // Aktifkan cookie aman di production
+      secure: true, // Aktifkan cookie aman di production
       httpOnly: true, // Cegah akses JavaScript ke cookie
     },
   })
