@@ -22,11 +22,13 @@ app.use(
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: true, // Aktifkan cookie aman di production
-      httpOnly: true, // Cegah akses JavaScript ke cookie
+      secure: true,
+      httpOnly: true,
+      maxAge: 3600000, // 1 jam
     },
   })
 );
+app.set("trust proxy", 1);
 
 // Middleware express
 app.use(express.json());
