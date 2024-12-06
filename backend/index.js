@@ -104,7 +104,7 @@ app.get(
     );
 
     req.session.token = token;
-    console.log(req.session);
+    console.log("auth session:", req.session);
 
     res.redirect(process.env.CLIENT_URL);
   }
@@ -122,7 +122,7 @@ app.get("/session", (req, res) => {
   console.log(req.session);
   if (req.session.token) {
     const token = req.session.token; // Ambil token dari session
-    console.log("session", token);
+    console.log("session:", token);
     res.json({ token }); // Kirim token ke client
   } else {
     res.status(401).json({ message: "Unauthorized", token: req.session.token });
