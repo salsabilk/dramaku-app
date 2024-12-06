@@ -18,20 +18,25 @@ const JWT_SECRET = process.env.JWT_SECRET; // JWT_SECRET untuk session
 // Konfigurasi express-session untuk mengelola sesi
 app.use(
   session({
-    secret: JWT_SECRET, // Gunakan JWT_SECRET untuk session secret
+    secret: JWT_SECRET,
     resave: false,
     saveUninitialized: true,
+    cookie: {
+      secure: true, // Aktifkan cookie aman di production
+      httpOnly: true, // Cegah akses JavaScript ke cookie
+    },
   })
 );
 
 // Middleware express
+app.use(express.json());
+
 app.use(
   cors({
     origin: ["http://localhost:3000", process.env.CLIENT_URL],
     credentials: true,
   })
 );
-app.use(express.json());
 
 // Inisialisasi Passport dan sesi
 app.use(passport.initialize());
@@ -47,31 +52,39 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        // Cek apakah pengguna sudah ada berdasarkan googleId atau email
-        const existingUser = await User.findOne({
+        console.log("Google profile:", profile);
+
+        // Cek user yang ada
+        let user = await User.findOne({
           where: { googleId: profile.id },
         });
 
-        if (existingUser) {
-          // Jika sudah ada, login user
-          return done(null, existingUser);
+        if (user) {
+          console.log("Existing user found:", user.id);
+          return done(null, user);
         }
 
-        // Jika belum ada, buat user baru di database
-        const newUser = await User.create({
+        // Buat user baru
+        user = await User.create({
           googleId: profile.id,
           username: profile.displayName,
-          email: profile.emails[0].value, // Ambil email pengguna dari Google
-          photo: profile.photos[0].value, // Simpan foto profil jika diperlukan
+          email: profile.emails[0].value,
+          photo: profile.photos[0].value,
+          role: "User",
+          is_verified: true, // User Google otomatis terverifikasi
+          is_suspended: false,
         });
 
-        return done(null, newUser);
+        console.log("New user created:", user.id);
+        return done(null, user);
       } catch (error) {
-        return done(error, false);
+        console.error("Google strategy error:", error);
+        return done(error, null);
       }
     }
   )
 );
+
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
@@ -97,16 +110,21 @@ app.get(
   "/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
-    const token = jwt.sign(
-      { id: req.user.id, email: req.user.email, role: req.user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+    try {
+      const token = jwt.sign(
+        { id: req.user.id, email: req.user.email, role: req.user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "1h" }
+      );
 
-    req.session.token = token;
-    console.log("auth session:", req.session);
+      req.session.token = token;
+      console.log("auth session:", req.session);
 
-    res.redirect(process.env.CLIENT_URL);
+      res.redirect(process.env.CLIENT_URL);
+    } catch (error) {
+      console.error("Token generation error:", error);
+      res.redirect("/auth/error");
+    }
   }
 );
 
@@ -119,13 +137,28 @@ app.get("/logout", (req, res) => {
 });
 
 app.get("/session", (req, res) => {
-  console.log(req.session);
-  if (req.session.token) {
-    const token = req.session.token; // Ambil token dari session
-    console.log("session:", token);
-    res.json({ token }); // Kirim token ke client
-  } else {
-    res.status(401).json({ message: "Unauthorized", token: req.session.token });
+  try {
+    console.log("Session request received");
+    console.log("Session data:", req.session);
+
+    if (req.session && req.session.token) {
+      res.json({
+        success: true,
+        token: req.session.token,
+      });
+    } else {
+      console.log("No token in session");
+      res.status(401).json({
+        success: false,
+        message: "No session token found",
+      });
+    }
+  } catch (error) {
+    console.error("Session endpoint error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 });
 
