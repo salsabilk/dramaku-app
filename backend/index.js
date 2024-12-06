@@ -149,15 +149,26 @@ app.get("/logout", (req, res) => {
   });
 });
 
+// Endpoint untuk mengecek session dan token
 app.get("/session", (req, res) => {
   try {
     console.log("Session request received");
     console.log("Session data:", req.session);
 
     if (req.session && req.session.token) {
+      // Decode token untuk mendapatkan informasi user
+      const decoded = jwt.verify(req.session.token, process.env.JWT_SECRET);
+      console.log("Decoded token:", decoded);
+
       res.json({
         success: true,
         token: req.session.token,
+        user: {
+          id: decoded.id,
+          email: decoded.email,
+          role: decoded.role,
+          username: decoded.username,
+        },
       });
     } else {
       console.log("No token in session");
